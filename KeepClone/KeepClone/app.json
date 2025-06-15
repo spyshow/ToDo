@@ -13,13 +13,25 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.keepclone",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to allow you to add location-based reminders to your notes.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses your location in the background to alert you about notes when you enter a specified area, even when the app is closed or not in use.",
+        "NSLocationAlwaysUsageDescription": "This app uses your location in the background to alert you about notes when you enter a specified area, even when the app is closed or not in use."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#FFFFFF"
       },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ],
+      "package": "com.example.keepclone",
       "edgeToEdgeEnabled": true
     },
     "web": {

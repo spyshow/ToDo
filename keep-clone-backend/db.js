@@ -25,7 +25,11 @@ const initDb = async () => {
       title VARCHAR(255) NOT NULL,
       content TEXT,
       createdAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-      updatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      updatedAt TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      latitude DOUBLE PRECISION NULL,
+      longitude DOUBLE PRECISION NULL,
+      radius INTEGER NULL,
+      geofenceEnabled BOOLEAN DEFAULT FALSE
     );
   `;
   try {
@@ -65,33 +69,70 @@ const getNoteById = async (id) => {
   return rows[0];
 };
 
-const createNote = async ({ title, content }) => {
-  const { rows } = await pool.query(
-    'INSERT INTO notes (title, content) VALUES ($1, $2) RETURNING *',
-    [title, content]
-  );
+const createNote = async (noteData) => {
+  const { title, content, latitude, longitude, radius } = noteData;
+  // Ensure geofenceEnabled is explicitly true or false. Default to false if not provided or not a boolean.
+  const geofenceEnabled = typeof noteData.geofenceEnabled === 'boolean' ? noteData.geofenceEnabled : false;
+
+  const queryText = `
+    INSERT INTO notes (title, content, latitude, longitude, radius, geofenceEnabled)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING *
+  `;
+  const values = [title, content, latitude, longitude, radius, geofenceEnabled];
+
+  const { rows } = await pool.query(queryText, values);
   return rows[0];
 };
 
-const updateNote = async (id, { title, content }) => {
-  const fields = [];
+const updateNote = async (id, fieldsToUpdate) => {
+  const { title, content, latitude, longitude, radius } = fieldsToUpdate;
+  // geofenceEnabled is handled slightly differently as we only want to update it if it's explicitly provided as a boolean
+  const geofenceEnabledInput = fieldsToUpdate.geofenceEnabled;
+
+  const settableFields = [];
   const values = [];
   let paramCount = 1;
 
   if (title !== undefined) {
-    fields.push(`title = $${paramCount++}`);
+    settableFields.push(`title = $${paramCount++}`);
     values.push(title);
   }
   if (content !== undefined) {
-    fields.push(`content = $${paramCount++}`);
+    settableFields.push(`content = $${paramCount++}`);
     values.push(content);
   }
-
-  if (fields.length === 0) {
-    return getNoteById(id); // Or throw an error: new Error("No fields to update");
+  // For nullable fields like latitude, longitude, radius, allow them to be set to null
+  if (fieldsToUpdate.hasOwnProperty('latitude')) {
+    settableFields.push(`latitude = $${paramCount++}`);
+    values.push(latitude); // This will be null if latitude in fieldsToUpdate is null
+  }
+  if (fieldsToUpdate.hasOwnProperty('longitude')) {
+    settableFields.push(`longitude = $${paramCount++}`);
+    values.push(longitude);
+  }
+  if (fieldsToUpdate.hasOwnProperty('radius')) {
+    settableFields.push(`radius = $${paramCount++}`);
+    values.push(radius);
+  }
+  // Only include geofenceEnabled in the update if it was explicitly passed as a boolean
+  if (typeof geofenceEnabledInput === 'boolean') {
+    settableFields.push(`geofenceEnabled = $${paramCount++}`);
+    values.push(geofenceEnabledInput);
   }
 
-  const queryText = `UPDATE notes SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`;
+  if (settableFields.length === 0) {
+    // No valid fields to update, return current note or indicate no change
+    return getNoteById(id);
+  }
+
+  // The trigger will automatically update `updatedAt`
+  const queryText = `
+    UPDATE notes
+    SET ${settableFields.join(', ')}
+    WHERE id = $${paramCount}
+    RETURNING *
+  `;
   values.push(id);
 
   const { rows } = await pool.query(queryText, values);

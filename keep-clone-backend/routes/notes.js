@@ -15,11 +15,19 @@ router.get('/', async (req, res, next) => {
 // POST /api/notes - Create a new note
 router.post('/', async (req, res, next) => {
   try {
-    const { title, content } = req.body;
-    if (!title || title.trim() === "") { // Added trim check
+    const { title, content, latitude, longitude, radius, geofenceEnabled } = req.body; // Destructure new fields
+    if (!title || title.trim() === "") {
       return res.status(400).json({ error: 'Title is required and cannot be empty' });
     }
-    const newNote = await db.createNote({ title, content });
+    // Basic validation for optional geo fields can be added here if needed.
+    const newNote = await db.createNote({
+      title,
+      content,
+      latitude,
+      longitude,
+      radius,
+      geofenceEnabled
+    });
     res.status(201).json(newNote);
   } catch (err) {
     next(err);
@@ -43,23 +51,39 @@ router.get('/:id', async (req, res, next) => {
 // PUT /api/notes/:id - Update a note by ID
 router.put('/:id', async (req, res, next) => {
   try {
-    const { title, content } = req.body;
-    // Optional: Add validation if title/content can be empty for update
-    if (title !== undefined && title.trim() === "") {
-        return res.status(400).json({ error: 'Title cannot be empty' });
+    const { title, content, latitude, longitude, radius, geofenceEnabled } = req.body;
+
+    const fieldsToUpdate = {};
+    if (req.body.hasOwnProperty('title')) {
+      if (title === null || (typeof title === 'string' && title.trim() === '')) {
+        // Allow unsetting title if schema permits, or enforce non-empty if required
+        // For now, let's prevent empty string title during update if title is provided
+        return res.status(400).json({ error: 'Title, if provided for update, cannot be empty.' });
+      }
+      fieldsToUpdate.title = title;
     }
-    const updatedNote = await db.updateNote(req.params.id, { title, content });
+    if (req.body.hasOwnProperty('content')) fieldsToUpdate.content = content; // Allow empty string for content
+    if (req.body.hasOwnProperty('latitude')) fieldsToUpdate.latitude = latitude; // Allow null
+    if (req.body.hasOwnProperty('longitude')) fieldsToUpdate.longitude = longitude; // Allow null
+    if (req.body.hasOwnProperty('radius')) fieldsToUpdate.radius = radius; // Allow null
+    if (req.body.hasOwnProperty('geofenceEnabled')) {
+      if (typeof geofenceEnabled !== 'boolean') {
+        return res.status(400).json({ error: 'geofenceEnabled must be a boolean (true or false).' });
+      }
+      fieldsToUpdate.geofenceEnabled = geofenceEnabled;
+    }
+
+    if (Object.keys(fieldsToUpdate).length === 0) {
+      return res.status(400).json({ error: 'No fields provided for update.' });
+    }
+
+    const updatedNote = await db.updateNote(req.params.id, fieldsToUpdate);
+
     if (updatedNote) {
       res.json(updatedNote);
     } else {
-      // This might happen if the note ID doesn't exist, or if updateNote returns undefined
-      // when no fields were actually changed (depending on its implementation)
-      const existingNote = await db.getNoteById(req.params.id);
-      if (!existingNote) {
-        return res.status(404).json({ error: 'Note not found' });
-      }
-      // If note exists but no fields were updated, return current note or 200 with updatedNote
-      res.json(updatedNote);
+      // This means the note with req.params.id was not found by db.updateNote
+      res.status(404).json({ error: 'Note not found.' });
     }
   } catch (err) {
     next(err);
